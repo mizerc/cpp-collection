@@ -1,0 +1,10 @@
+#ifndef RENDER_H
+#define RENDER_H
+
+// Colors
+#define COLOR_YELLOW 0xFFFF0000
+#define COLOR_DARK_YELLOW 0xAAAA0000
+#define COLOR_RED 0xFF000000
+#define COLOR_LIGHT_GRAY 0xCCCCCC00
+
+#endif RENDER_H
