@@ -2,17 +2,24 @@
 #include <iostream>
 #include <array>
 
-// SDL
 #include <SDL.h>
 
-// OPENGL
 // #include <SDL_opengl.h> // Not used when using glad
 #include "glad/glad.h"
 
-// IMGUI
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_sdl2.h"
-#include "imgui/imgui_impl_opengl3.h"
+#define MAX_VERTEX_MEMORY 512 * 1024
+#define MAX_ELEMENT_MEMORY 128 * 1024
+#define NK_INCLUDE_FIXED_TYPES
+#define NK_INCLUDE_STANDARD_IO
+#define NK_INCLUDE_STANDARD_VARARGS
+#define NK_INCLUDE_DEFAULT_ALLOCATOR
+#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
+#define NK_INCLUDE_FONT_BAKING
+#define NK_INCLUDE_DEFAULT_FONT
+#define NK_IMPLEMENTATION
+#define NK_SDL_GL3_IMPLEMENTATION
+#include <nuklear/nuklear.h>
+#include <nuklear/nuklear_sdl_gl3.h>
 
 const int WINDOW_W = 800;
 const int WINDOW_H = 600;
@@ -40,6 +47,11 @@ int main(int argc, char **argv)
 {
 	std::cout << "hi\n";
 
+	// NUKLEAR
+	struct nk_context *ctx;
+	struct nk_colorf bg;
+
+	// SDL INIT
 	if(SDL_Init(SDL_INIT_VIDEO) != 0) {
 		std::cerr << "SDL_Init Error: " << SDL_GetError() << "\n";
 		return EXIT_FAILURE;
@@ -85,20 +97,26 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	// Nuklear setup
+	ctx = nk_sdl_init(window);
+	/* Load Fonts: if none of these are loaded a default font will be used  */
+	/* Load Cursor: if you uncomment cursor loading please hide the cursor */
+	{
+		struct nk_font_atlas *atlas;
+		nk_sdl_font_stash_begin(&atlas);
+		/*struct nk_font *droid = nk_font_atlas_add_from_file(atlas, "../../../extra_font/DroidSans.ttf", 14, 0);*/
+		/*struct nk_font *roboto = nk_font_atlas_add_from_file(atlas, "../../../extra_font/Roboto-Regular.ttf", 16, 0);*/
+		/*struct nk_font *future = nk_font_atlas_add_from_file(atlas, "../../../extra_font/kenvector_future_thin.ttf", 13, 0);*/
+		/*struct nk_font *clean = nk_font_atlas_add_from_file(atlas, "../../../extra_font/ProggyClean.ttf", 12, 0);*/
+		/*struct nk_font *tiny = nk_font_atlas_add_from_file(atlas, "../../../extra_font/ProggyTiny.ttf", 10, 0);*/
+		/*struct nk_font *cousine = nk_font_atlas_add_from_file(atlas, "../../../extra_font/Cousine-Regular.ttf", 13, 0);*/
+		nk_sdl_font_stash_end();
+		/*nk_style_load_all_cursors(ctx, atlas->cursors);*/
+		/*nk_style_set_font(ctx, &roboto->handle);*/
+	}
+
 	// Enable Vsync
 	SDL_GL_SetSwapInterval(1);
-
-	// Initialize ImGui
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO &io = ImGui::GetIO();
-	(void)io;
-	ImGui::StyleColorsDark();
-	// Pass GLSL version (410 core for macOS OGL 4.1)
-	ImGui_ImplSDL2_InitForOpenGL(window, glContext);
-	ImGui_ImplOpenGL3_Init("#version 410");
-	// Set ImGui style
-	ImGui::StyleColorsDark();
 
 	// Create shaders
 	GLuint vs = glCreateShader(GL_VERTEX_SHADER);
@@ -152,12 +170,11 @@ int main(int argc, char **argv)
 		float deltaTimeMs = (nowMs - lastFrameTimeMs) / 1000.0f;
 		lastFrameTimeMs = nowMs;
 
+		// Nuklear event
+		nk_input_begin(ctx);
 		// Poll events from queue
 		SDL_Event e;
 		while(SDL_PollEvent(&e)) {
-			// Pass event to ImGui
-			ImGui_ImplSDL2_ProcessEvent(&e);
-			// Handle SDL events
 			if(e.type == SDL_QUIT) {
 				quit = true;
 			}
@@ -167,12 +184,47 @@ int main(int argc, char **argv)
 			if(e.type == SDL_KEYUP) {
 				keyDown[e.key.keysym.scancode] = false;
 			}
+			nk_sdl_handle_event(&e);
 		}
+		nk_sdl_handle_grab(); /* optional grabbing behavior */
+		nk_input_end(ctx);
 
 		// Process input
 		if(keyDown[SDL_SCANCODE_ESCAPE]) {
 			quit = true;
 		}
+
+		/* GUI */
+		if(nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250), NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE | NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE)) {
+			enum { EASY,
+				HARD };
+			static int op = EASY;
+			static int property = 20;
+
+			nk_layout_row_static(ctx, 30, 80, 1);
+			if(nk_button_label(ctx, "button"))
+				printf("button pressed!\n");
+			nk_layout_row_dynamic(ctx, 30, 2);
+			if(nk_option_label(ctx, "easy", op == EASY)) op = EASY;
+			if(nk_option_label(ctx, "hard", op == HARD)) op = HARD;
+			nk_layout_row_dynamic(ctx, 22, 1);
+			nk_property_int(ctx, "Compression:", 0, &property, 100, 10, 1);
+
+			nk_layout_row_dynamic(ctx, 20, 1);
+			nk_label(ctx, "background:", NK_TEXT_LEFT);
+			nk_layout_row_dynamic(ctx, 25, 1);
+			if(nk_combo_begin_color(ctx, nk_rgb_cf(bg), nk_vec2(nk_widget_width(ctx), 400))) {
+				nk_layout_row_dynamic(ctx, 120, 1);
+				bg = nk_color_picker(ctx, bg, NK_RGBA);
+				nk_layout_row_dynamic(ctx, 25, 1);
+				bg.r = nk_propertyf(ctx, "#R:", 0, bg.r, 1.0f, 0.01f, 0.005f);
+				bg.g = nk_propertyf(ctx, "#G:", 0, bg.g, 1.0f, 0.01f, 0.005f);
+				bg.b = nk_propertyf(ctx, "#B:", 0, bg.b, 1.0f, 0.01f, 0.005f);
+				bg.a = nk_propertyf(ctx, "#A:", 0, bg.a, 1.0f, 0.01f, 0.005f);
+				nk_combo_end(ctx);
+			}
+		}
+		nk_end(ctx);
 
 		// Update object color based on frame time
 
@@ -193,29 +245,8 @@ int main(int argc, char **argv)
 		glBindVertexArray(vao);
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 
-		// ImGui new frame
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplSDL2_NewFrame();
-		ImGui::NewFrame();
-		// UI
-		ImGui::Begin("Test");
-		ImGui::Text("Hello from ImGui + OpenGL 4.1!");
-		ImGui::End();
-
-		// Another window
-		ImGui::Begin("Another Window"); // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-		ImGui::Text("Hello from another window!");
-		ImGui::Button("Close Me");
-		ImGui::End();
-
-		// Demo windows
-		ImGui::ShowDemoWindow();
-
-		// Render
-		ImGui::Render();
-
-		// backend render call
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+		// Nuklear render
+		nk_sdl_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_MEMORY, MAX_ELEMENT_MEMORY);
 
 		// Swap buffers
 		SDL_GL_SwapWindow(window);
@@ -224,11 +255,6 @@ int main(int argc, char **argv)
 		Uint32 delayDurationMs = 16; // Approx ~60 FPS
 		SDL_Delay(delayDurationMs);
 	}
-
-	// Imgui cleanup
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplSDL2_Shutdown();
-	ImGui::DestroyContext();
 
 	// Cleanup OpenGL resources
 	glDeleteBuffers(1, &vbo);
